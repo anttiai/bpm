@@ -1,0 +1,13 @@
+[package]
+name = "bpm"
+version = "0.1.0"
+authors = ["Antti Ala-Ilkka <antti@streamrun.com>"]
+edition = "2018"
+
+[dependencies]
+lazy_static = "1.5"
+parking_lot = "0.12.3"
+
+
+[lib]
+crate-type = ["cdylib"]
