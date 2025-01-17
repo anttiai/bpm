@@ -10,5 +10,5 @@ cargo build --release
 Integrate with encoders such as FFmpeg or GStreamer. Call **bpm_frame_encoded** after encoding a frame successfully. For keyframes, inject the returned data into SEI or OBU messages. Use **bpm_frame_lagged** and **bpm_frame_dropped** to track lagged and dropped frames, respectively.
 
 ## Example in C
-gcc -o example example.c -Ltarget/release/ -lbpm
-./example
+gcc -o build/example example.c -Ltarget/release/ -lbpm
+./build/example
