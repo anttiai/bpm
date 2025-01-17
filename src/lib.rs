@@ -1,4 +1,5 @@
 use parking_lot::{Mutex};
+use chrono::{Utc, SecondsFormat};
 
 struct State {
     tracks: u8,
@@ -33,6 +34,13 @@ impl Default for State {
 // Maintain global state
 lazy_static::lazy_static! {
     static ref STATE: Mutex<State> = Mutex::new(State::default());
+}
+
+
+fn now_in_rfc3339() -> String {
+    let now = Utc::now();
+    let formatted_time = now.to_rfc3339_opts(SecondsFormat::Secs, true);
+    return formatted_time;
 }
 
 
@@ -107,6 +115,7 @@ pub extern "C" fn bpm_frame_dropped(track: u32) {
 #[no_mangle]
 pub extern "C" fn bpm_print_state() {
     let state = STATE.lock();
+    print!("Time: {}\n", now_in_rfc3339());
     print!("Tracks: {}\n", state.tracks);
     print!("Rendered: {}\n", state.sm_rendered);
     print!("Lagged: {}\n", state.sm_lagged);
