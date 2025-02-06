@@ -255,10 +255,10 @@ pub fn bpm_erm(track_idx: u32) -> [u8; 60] {
     return erm_data;
 }
 
-/// Pointer to BPM data.
+/// Render BPM data and return a pointer to the data and its size.
 /// Memory must be freed by the caller using bpm_destroy.
 #[no_mangle]
-pub extern "C" fn bpm_data_ptr(track_idx: u32, ts_data: *mut *mut u8, ts_size: *mut u32) -> i32 {
+pub extern "C" fn bpm_render_data_ptr(track_idx: u32, ts_data: *mut *mut u8, ts_size: *mut u32) -> i32 {
     if ts_data.is_null() || ts_size.is_null() {
         return -1;
     }
@@ -308,14 +308,6 @@ pub extern "C" fn bpm_print_state() {
     print!("ERM Input: {:?}, {:?}\n", state.erm_input, state.erm_input_ref);
     print!("ERM Skipped: {:?}, {:?}\n", state.erm_skipped, state.erm_skipped_ref);
     print!("ERM Output: {:?}, {:?}\n", state.erm_output, state.erm_output_ref);
-    drop(state);
-
-    let ts = bpm_ts(0, 0, 0, 0);
-    print!("TS: {:02X?}\n", ts);
-    let sm = bpm_sm(0);
-    print!("SM: {:02X?}\n", sm);
-    let erm = bpm_erm(0);
-    print!("ERM: {:02X?}\n", erm);
 }
 
 /// Current time in RFC 3339 format
@@ -346,13 +338,3 @@ fn c_char_to_string(ptr: *const c_char) -> Option<String> {
         })
         .ok()
 }
-
-/* For quick tests
-fn main() {
-    println!("Hello, world!");
-    bpm_print_state();
-
-    // Add some test data
-    bpm_frame_encoded(1);
-    bpm_print_state();
-}*/
