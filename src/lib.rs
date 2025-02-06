@@ -1,5 +1,6 @@
 use parking_lot::{Mutex};
 use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
+use core::panic;
 use std::{ffi::CStr, os::raw::c_char, u32};
 
 const MAX_OUTPUT_VIDEO_ENCODERS: usize = 6;
@@ -36,23 +37,45 @@ struct State {
     sm_dropped: u32,  // Frames dropped due to network congestion
     sm_output: u32,   // Sum of all video encoder rendition sinks
 
+    // Values sent in the last metrics
+    sm_rendered_ref: Vec<u32>,
+    sm_lagged_ref: Vec<u32>,
+    sm_dropped_ref: Vec<u32>,
+    sm_output_ref: Vec<u32>,
+
     // Encoded Rendition Metrics
     erm_input: Vec<u32>,   // Frames input to the encoder rendition
     erm_skipped: Vec<u32>, // Frames skipped by the encoder rendition
     erm_output: Vec<u32>,  // Frames output (encoded) by the encoder rendition
+
+    // Values sent in the last metrics
+    erm_input_ref: Vec<u32>,
+    erm_skipped_ref: Vec<u32>,
+    erm_output_ref: Vec<u32>,
 }
 
 impl Default for State {
     fn default() -> State {
         State {
             track_map: Vec::new(),
+
             sm_rendered: 0,
             sm_lagged: 0,
             sm_dropped: 0,
             sm_output: 0,
+
+            sm_rendered_ref: vec![0; MAX_OUTPUT_VIDEO_ENCODERS],
+            sm_lagged_ref: vec![0; MAX_OUTPUT_VIDEO_ENCODERS],
+            sm_dropped_ref: vec![0; MAX_OUTPUT_VIDEO_ENCODERS],
+            sm_output_ref: vec![0; MAX_OUTPUT_VIDEO_ENCODERS],
+
             erm_input: vec![0; MAX_OUTPUT_VIDEO_ENCODERS],
             erm_skipped: vec![0; MAX_OUTPUT_VIDEO_ENCODERS],
             erm_output: vec![0; MAX_OUTPUT_VIDEO_ENCODERS],
+
+            erm_input_ref: vec![0; MAX_OUTPUT_VIDEO_ENCODERS],
+            erm_skipped_ref: vec![0; MAX_OUTPUT_VIDEO_ENCODERS],
+            erm_output_ref: vec![0; MAX_OUTPUT_VIDEO_ENCODERS],
         }
     }
 }
@@ -170,11 +193,11 @@ pub fn bpm_ts(ts_cts: i64, ts_fer: i64, ts_ferc: i64, ts_pir: i64) -> [u8; 125] 
 }
 
 /// BPM Session Metrics
-pub fn bpm_sm() -> [u8; 66] {
-    let state = STATE.lock();
+pub fn bpm_sm(track_idx: u32) -> [u8; 65] {
+    let mut state = STATE.lock();
     let now = now_in_rfc3339();
 
-    let mut sm_data: [u8; 66] = [0; 66];
+    let mut sm_data: [u8; 65] = [0; 65];
     sm_data[0..16].copy_from_slice(&UUID_SM);
     sm_data[16] = 0x00;                                     // ts_reserved_zero_4bits & num_timestamps_minus1
 
@@ -186,20 +209,25 @@ pub fn bpm_sm() -> [u8; 66] {
     sm_data[44] = 0x03;                                     // ts_reserved_zero_4bits & num_counters_minus1
 
     sm_data[45] = BPM_SM_FRAMES_RENDERED;
-    sm_data[46..50].copy_from_slice(&state.sm_rendered.to_be_bytes()); // FIXME The 32-bit difference value for the specified counter_tag, relative to the last time it was sent. For example, with 60 fps rendering, each 2 seconds counter_value should be 120.
+    sm_data[46..50].copy_from_slice(&state.sm_rendered_ref[track_idx as usize].to_be_bytes());
     sm_data[50] = BPM_SM_FRAMES_LAGGED;
-    sm_data[51..55].copy_from_slice(&state.sm_lagged.to_be_bytes()); // FIXME
+    sm_data[51..55].copy_from_slice(&state.sm_lagged_ref[track_idx as usize].to_be_bytes());
     sm_data[55] = BPM_SM_FRAMES_DROPPED;
-    sm_data[56..60].copy_from_slice(&state.sm_dropped.to_be_bytes()); // FIXME
-    sm_data[61] = BPM_SM_FRAMES_OUTPUT;
-    sm_data[62..66].copy_from_slice(&state.sm_output.to_be_bytes()); // FIXME
+    sm_data[56..60].copy_from_slice(&state.sm_dropped_ref[track_idx as usize].to_be_bytes());
+    sm_data[60] = BPM_SM_FRAMES_OUTPUT;
+    sm_data[61..65].copy_from_slice(&state.sm_output_ref[track_idx as usize].to_be_bytes());
+
+    state.sm_rendered_ref[track_idx as usize] = state.sm_rendered - state.sm_rendered_ref[track_idx as usize];
+    state.sm_lagged_ref[track_idx as usize] = state.sm_lagged - state.sm_lagged_ref[track_idx as usize];
+    state.sm_dropped_ref[track_idx as usize] = state.sm_dropped - state.sm_dropped_ref[track_idx as usize];
+    state.sm_output_ref[track_idx as usize] = state.sm_output - state.sm_output_ref[track_idx as usize];
 
     return sm_data;
 }
 
 /// BPM Encoded Rendition Metrics
 pub fn bpm_erm(track_idx: u32) -> [u8; 60] {
-    let state = STATE.lock();
+    let mut state = STATE.lock();
     let now = now_in_rfc3339();
 
     let mut erm_data: [u8; 60] = [0; 60];
@@ -214,11 +242,15 @@ pub fn bpm_erm(track_idx: u32) -> [u8; 60] {
     erm_data[44] = 0x02;                                     // ts_reserved_zero_4bits & num_counters_minus1
 
     erm_data[45] = BPM_ERM_FRAMES_INPUT;
-    erm_data[46..50].copy_from_slice(&state.erm_input[track_idx as usize].to_be_bytes()); // FIXME The 32-bit difference value for the specified counter_tag, relative to the last time it was sent. For example, with 60 fps rendering, each 2 seconds counter_value should be 120.
+    erm_data[46..50].copy_from_slice(&state.erm_input_ref[track_idx as usize].to_be_bytes());
     erm_data[50] = BPM_ERM_FRAMES_SKIPPED;
-    erm_data[51..55].copy_from_slice(&state.erm_skipped[track_idx as usize].to_be_bytes()); // FIXME
+    erm_data[51..55].copy_from_slice(&state.erm_skipped_ref[track_idx as usize].to_be_bytes());
     erm_data[55] = BPM_ERM_FRAMES_OUTPUT;
-    erm_data[56..60].copy_from_slice(&state.erm_output[track_idx as usize].to_be_bytes()); // FIXME
+    erm_data[56..60].copy_from_slice(&state.erm_output_ref[track_idx as usize].to_be_bytes());
+
+    state.erm_input_ref[track_idx as usize] = state.erm_input[track_idx as usize] - state.erm_input_ref[track_idx as usize];
+    state.erm_skipped_ref[track_idx as usize] = state.erm_skipped[track_idx as usize] - state.erm_skipped_ref[track_idx as usize];
+    state.erm_output_ref[track_idx as usize] = state.erm_output[track_idx as usize] - state.erm_output_ref[track_idx as usize];
 
     return erm_data;
 }
@@ -232,22 +264,19 @@ pub extern "C" fn bpm_data_ptr(track_idx: u32, ts_data: *mut *mut u8, ts_size: *
     }
 
     let ts = bpm_ts(0, 0, 0, 0);
-    let sm = bpm_sm();
+    let sm = bpm_sm(track_idx);
     let erm = bpm_erm(track_idx);
 
-    let size = ts.len() + sm.len() + erm.len();
+    const BPM_DATA_SIZE: usize = 250;
+    let mut bpm_data: [u8; BPM_DATA_SIZE] = [0; BPM_DATA_SIZE];
+    bpm_data[0..ts.len()].copy_from_slice(&ts);
+    bpm_data[ts.len()..ts.len() + sm.len()].copy_from_slice(&sm);
+    bpm_data[ts.len() + sm.len()..BPM_DATA_SIZE].copy_from_slice(&erm);
 
-    let mut bpm_data: Vec<u8> = Vec::with_capacity(size);
-    bpm_data.extend_from_slice(&ts);
-    bpm_data.extend_from_slice(&sm);
-    bpm_data.extend_from_slice(&erm);
-
-    let size = size;
     let box_ptr = Box::new(bpm_data);
-
     unsafe {
         *ts_data = Box::into_raw(box_ptr) as *mut u8;
-        *ts_size = size as u32;
+        *ts_size = bpm_data.len() as u32;
     }
 
     return 0;
@@ -261,6 +290,9 @@ pub extern "C" fn bpm_destroy(data: *mut u8) {
             let _ = Box::from_raw(data);
         }
     }
+    else {
+        panic!("Invalid pointer received");
+    }
 }
 
 /// Print the state for debugging
@@ -269,16 +301,21 @@ pub extern "C" fn bpm_print_state() {
     let state = STATE.lock();
     print!("Time: {}\n", now_in_rfc3339());
     print!("Track_map: {:?}\n", state.track_map);
-    print!("SM Rendered: {}\n", state.sm_rendered);
-    print!("SM Lagged: {}\n", state.sm_lagged);
-    print!("SM Dropped: {}\n", state.sm_dropped);
-    print!("SM Output: {}\n", state.sm_output);
-    print!("ERM Input: {:?}\n", state.erm_input);
-    print!("ERM Skipped: {:?}\n", state.erm_skipped);
-    print!("ERM Output: {:?}\n", state.erm_output);
+    print!("SM Rendered: {}, {:?}\n", state.sm_rendered, state.sm_rendered_ref);
+    print!("SM Lagged: {}, {:?}\n", state.sm_lagged, state.sm_lagged_ref);
+    print!("SM Dropped: {}, {:?}\n", state.sm_dropped, state.sm_dropped_ref);
+    print!("SM Output: {}, {:?}\n", state.sm_output, state.sm_output_ref);
+    print!("ERM Input: {:?}, {:?}\n", state.erm_input, state.erm_input_ref);
+    print!("ERM Skipped: {:?}, {:?}\n", state.erm_skipped, state.erm_skipped_ref);
+    print!("ERM Output: {:?}, {:?}\n", state.erm_output, state.erm_output_ref);
+    drop(state);
 
-    let data = bpm_ts(0, 0, 0, 0);
-    print!("Data: {:02X?}\n", data);
+    let ts = bpm_ts(0, 0, 0, 0);
+    print!("TS: {:02X?}\n", ts);
+    let sm = bpm_sm(0);
+    print!("SM: {:02X?}\n", sm);
+    let erm = bpm_erm(0);
+    print!("ERM: {:02X?}\n", erm);
 }
 
 /// Current time in RFC 3339 format
