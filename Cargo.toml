@@ -10,5 +10,4 @@ parking_lot = "0.12.3"
 chrono = "0.4.39"
 
 [lib]
-#crate-type = ["bin"]
 crate-type = ["cdylib"]
