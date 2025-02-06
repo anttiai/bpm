@@ -6,7 +6,7 @@ The metrics should be sent in-band via either SEI (for AVC/HEVC) or OBU (AV1) me
 cargo build --release
 
 ## Use
-Integrate with software doing encoding, such as FFmpeg or GStreamer. Call **bpm_frame_encoded** after encoding a frame successfully. For keyframes, render and fetch metrics with **bpm_render_data_ptr** and inject the returned data into SEI or OBU messages. Use **bpm_frame_lagged** and **bpm_frame_dropped** to track lagged and dropped frames, respectively.
+Integrate with encoding software such as FFmpeg or GStreamer. Call **bpm_frame_encoded** after successfully encoding a frame. For keyframes, render and fetch metrics using  **bpm_render_data_ptr**, then inject the returned data into SEI or OBU messages. Use **bpm_frame_lagged** and **bpm_frame_dropped** to track lagged and dropped frames, respectively.
 
 ## Example in C
 ```bash
