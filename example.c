@@ -7,24 +7,46 @@ static void print_frame(int track, int frame_number) {
 }
 
 void render_and_print_data(int track_idx) {
-    // Get data to a pointer holding the Rust-allocated memory
-    uint8_t* data = NULL;
-    uint32_t size = 0;
-    int result = bpm_render_data_ptr(track_idx, &data, &size);
-    for (int i = 0; i < size; i++) {
-        printf("0x%02X ", data[i]);
+    // Pointers to the Rust-allocated memory
+    uint8_t* ts_data = NULL;
+    uint32_t ts_size = 0;
+    bpm_render_ts_ptr(&ts_data, &ts_size);
+    printf("TS: ");
+    for (int i=0; i<ts_size; i++) {
+        printf("0x%02X ", ts_data[i]);
     }
-    bpm_destroy(data);
+    bpm_destroy(ts_data);
+
+    uint8_t* sm_data = NULL;
+    uint32_t sm_size = 0;
+    bpm_render_sm_ptr(track_idx, &sm_data, &sm_size);
+    printf("SM: ");
+    for (int i=0; i<sm_size; i++) {
+        printf("0x%02X ", sm_data[i]);
+    }
+    bpm_destroy(sm_data);
+
+    uint8_t* erm_data = NULL;
+    uint32_t erm_size = 0;
+    bpm_render_erm_ptr(track_idx, &erm_data, &erm_size);
+    printf("ERM: ");
+    for (int i=0; i<erm_size; i++) {
+        printf("0x%02X ", erm_data[i]);
+    }
+    bpm_destroy(erm_data);
 }
 
-int main() {
 
+int main() {
     // Two tracks
     int track0 = bpm_get_track_index("1080p60");
     int track1 = bpm_get_track_index("720p30");
 
     // 1000 frames
-    for (int i = 0; i < 1000; i++) {
+    //for (int i=0; i<1000; i++) {
+    int i = 0;
+    do {
+        i++;
         // Track 0: Every frame encoded (60fps)
         bpm_frame_encoded(track0);
 
@@ -39,6 +61,6 @@ int main() {
             render_and_print_data(track0);
             render_and_print_data(track1);
         }
-    }
+    } while (true);
     return 0;
 }

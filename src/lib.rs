@@ -255,34 +255,61 @@ pub fn bpm_erm(track_idx: u32) -> [u8; 60] {
     return erm_data;
 }
 
-/// Render BPM data and return a pointer to the data and its size.
+/// Render BPM TS data.
 /// Memory must be freed by the caller using bpm_destroy.
 #[no_mangle]
-pub extern "C" fn bpm_render_data_ptr(track_idx: u32, ts_data: *mut *mut u8, ts_size: *mut u32) -> i32 {
+pub extern "C" fn bpm_render_ts_ptr(ts_data: *mut *mut u8, ts_size: *mut u32) -> i32 {
     if ts_data.is_null() || ts_size.is_null() {
         return -1;
     }
 
     let ts = bpm_ts(0, 0, 0, 0);
-    let sm = bpm_sm(track_idx);
-    let erm = bpm_erm(track_idx);
-
-    const BPM_DATA_SIZE: usize = 250;
-    let mut bpm_data: [u8; BPM_DATA_SIZE] = [0; BPM_DATA_SIZE];
-    bpm_data[0..ts.len()].copy_from_slice(&ts);
-    bpm_data[ts.len()..ts.len() + sm.len()].copy_from_slice(&sm);
-    bpm_data[ts.len() + sm.len()..BPM_DATA_SIZE].copy_from_slice(&erm);
-
-    let box_ptr = Box::new(bpm_data);
+    let box_ptr = Box::new(ts);
     unsafe {
         *ts_data = Box::into_raw(box_ptr) as *mut u8;
-        *ts_size = bpm_data.len() as u32;
+        *ts_size = ts.len() as u32;
     }
 
     return 0;
 }
 
-/// Free the memory allocated by bpm_ts_ptr, bpm_erm_ptr, or bpm_sm_ptr
+/// Render BPM SM data.
+/// Memory must be freed by the caller using bpm_destroy.
+#[no_mangle]
+pub extern "C" fn bpm_render_sm_ptr(track_idx: u32, sm_data: *mut *mut u8, sm_size: *mut u32) -> i32 {
+    if sm_data.is_null() || sm_size.is_null() {
+        return -1;
+    }
+
+    let sm = bpm_sm(track_idx);
+    let box_ptr = Box::new(sm);
+    unsafe {
+        *sm_data = Box::into_raw(box_ptr) as *mut u8;
+        *sm_size = sm.len() as u32;
+    }
+
+    return 0;
+}
+
+/// Render BPM ERM data.
+/// Memory must be freed by the caller using bpm_destroy.
+#[no_mangle]
+pub extern "C" fn bpm_render_erm_ptr(track_idx: u32, erm_data: *mut *mut u8, erm_size: *mut u32) -> i32 {
+    if erm_data.is_null() || erm_size.is_null() {
+        return -1;
+    }
+
+    let erm = bpm_erm(track_idx);
+    let box_ptr = Box::new(erm);
+    unsafe {
+        *erm_data = Box::into_raw(box_ptr) as *mut u8;
+        *erm_size = erm.len() as u32;
+    }
+
+    return 0;
+}
+
+/// Free the memory allocated by bpm_render_ts_ptr, bpm_render_sm_ptr, or bpm_render_erm_ptr
 #[no_mangle]
 pub extern "C" fn bpm_destroy(data: *mut u8) {
     if !data.is_null() {
