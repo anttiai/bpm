@@ -1,7 +1,7 @@
 [package]
 name = "bpm"
 version = "0.1.0"
-authors = ["Antti Ala-Ilkka <antti@streamrun.com>"]
+authors = ["Antti Ala-Ilkka <antti@instereo.fi>"]
 edition = "2018"
 
 [dependencies]
