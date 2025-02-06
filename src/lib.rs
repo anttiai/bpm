@@ -1,6 +1,6 @@
 use parking_lot::{Mutex};
-use chrono::{Utc, SecondsFormat};
-use std::{ffi::CStr, os::raw::c_char};
+use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
+use std::{ffi::CStr, os::raw::c_char, u32};
 
 // Maximum number of video encoder renditions
 const MAX_OUTPUT_VIDEO_ENCODERS: usize = 6;
@@ -26,7 +26,7 @@ enum _bpm_ts_type {
 }
 
 // Timestamp event tags
-enum _BPM_TS_EVENT_FERCbpm_ts_event_tag {
+enum bpm_ts_event_tag {
 	BPM_TS_EVENT_CTS = 1, // Composition Time Event
 	BPM_TS_EVENT_FER,     // Frame Encode Request Event
 	BPM_TS_EVENT_FERC,    // Frame Encode Request Complete Event
@@ -52,14 +52,14 @@ enum _bpm_erm_type {
 // Timestamp
 const NULL: u8 = 0;
 const TS_TYPE: u8 = 1;            // RFC3339
-const _BPM_TS_EVENT_CTS: u8 = 1;  // Composition Time Event
-const _BPM_TS_EVENT_FER: u8 = 2;  // Frame Encode Request Event
-const _BPM_TS_EVENT_FERC: u8 = 3; // Frame Encode Request Complete
+const BPM_TS_EVENT_CTS: u8 = 1;  // Composition Time Event
+const BPM_TS_EVENT_FER: u8 = 2;  // Frame Encode Request Event
+const BPM_TS_EVENT_FERC: u8 = 3; // Frame Encode Request Complete
 const BPM_TS_EVENT_PIR: u8 = 4;   // Packet Interleave Request Event
 
 
 struct State {
-    track_map: Vec<String>, // Track Quality -> index
+    track_map: Vec<String>, // Track fingerprints for index in the metrics arrays
 
     // Session metrics
     sm_rendered: u32, // Frames rendered by compositor
@@ -89,7 +89,7 @@ impl Default for State {
 }
 
 impl State {
-    fn get_index(&mut self, fingerprint: String) -> usize {
+    fn get_track_index(&mut self, fingerprint: String) -> usize {
         if let Some(index) = self.track_map.iter().position(|x| x == &fingerprint) {
             index
         } else {
@@ -107,28 +107,23 @@ lazy_static::lazy_static! {
     static ref STATE: Mutex<State> = Mutex::new(State::default());
 }
 
-/*
-/// Initialize the BPM library
-///
-/// * `number_of_tracks` - Number of video tracks/renditions.
-#[no_mangle]
-pub extern "C" fn bpm_init(number_of_tracks: u32) {
-    if number_of_tracks < 1 {
-        panic!("Invalid number of tracks");
-    }
 
-    let mut state = STATE.lock();
-    state.tracks = number_of_tracks;
-    state.erm_input = Some(vec![0; number_of_tracks as usize]);
-    state.erm_skipped = Some(vec![0; number_of_tracks as usize]);
-    state.erm_output = Some(vec![0; number_of_tracks as usize]);
+/// Get the index for the track by track fingerprint (e.g. codec_resolution_fps).
+/// Used if the track index is not known by the encoder.
+#[no_mangle]
+pub extern "C" fn bpm_get_track_index(track_fp: *const c_char) -> i32 {
+    if let Some(track_fp_str) = c_char_to_string(track_fp) {
+        let mut state = STATE.lock();
+        let track_idx = state.get_track_index(track_fp_str);
+        return track_idx as i32;
+    }
+    return -1;
 }
-*/
 
 /// Frame encoded successfully
-fn bpm_frame_encoded(track_fp: String) {
+#[no_mangle]
+pub extern "C" fn bpm_frame_encoded(track_idx: u32) {
     let mut state = STATE.lock();
-    let track_idx = state.get_index(track_fp);
 
     // Spec: "The primary, highest quality video track must be packaged
     // and sent as enhanced RTMP single-track video packets" = track 0
@@ -144,18 +139,10 @@ fn bpm_frame_encoded(track_fp: String) {
     state.erm_output[track_idx as usize] += 1;
 }
 
-#[no_mangle]
-pub extern "C" fn bpm_frame_encoded_c(track_fp: *const c_char) {
-    if let Some(track_fp_str) = c_char_to_string(track_fp) {
-        bpm_frame_encoded(track_fp_str);
-    }
-}
-
-
 /// Frame lagged while encoding
-fn bpm_frame_lagged(track_fp: String) {
+#[no_mangle]
+pub extern "C" fn bpm_frame_lagged(track_idx: u32) {
     let mut state = STATE.lock();
-    let track_idx = state.get_index(track_fp);
     state.sm_lagged += 1;
 
     // Frames input to the encoder rendition
@@ -165,20 +152,10 @@ fn bpm_frame_lagged(track_fp: String) {
     state.erm_skipped[track_idx as usize] += 1;
 }
 
+/// Frame dropped due to network congestion
 #[no_mangle]
-pub extern "C" fn bpm_frame_lagged_c(track_fp: *const c_char) {
-    if let Some(track_fp_str) = c_char_to_string(track_fp) {
-        bpm_frame_lagged(track_fp_str);
-    }
-}
-
-
-/// Frame was dropped due to network congestion
-///
-/// * `track_idx` - Track number.
-fn bpm_frame_dropped(track_fp: String) {
+pub extern "C" fn bpm_frame_dropped(track_idx: u32) {
     let mut state = STATE.lock();
-    let track_idx = state.get_index(track_fp);
     state.sm_dropped += 1;
 
     // Frames input to the encoder rendition
@@ -188,40 +165,49 @@ fn bpm_frame_dropped(track_fp: String) {
     state.erm_skipped[track_idx as usize] += 1;
 }
 
-#[no_mangle]
-pub extern "C" fn bpm_frame_dropped_c(track_fp: *const c_char) {
-    if let Some(track_fp_str) = c_char_to_string(track_fp) {
-        bpm_frame_dropped(track_fp_str);
-    }
-}
-
-
 /// BPM TS (Timestamp)
-pub fn bpm_ts() -> [u8; 44] {
-    let mut ts_data: [u8; 44] = [0; 44];
-    ts_data[0..16].copy_from_slice(&UUID_TS); // UUID
-    ts_data[16] = 0x01;                            // ts_reserved_zero_4bits & num_timestamps_minus1
-    ts_data[17] = TS_TYPE;                         // Current UTC time in RFC3339
-    ts_data[18] = BPM_TS_EVENT_PIR;                // "IVS expects BPM SM SEI using timestamp_event only set to 4"
-    ts_data[19..43].copy_from_slice(now_in_rfc3339().as_bytes()); // Current UTC time
-    ts_data[43] = NULL;                            // Null termination
+pub fn bpm_ts(ts_cts: i64, ts_fer: i64, ts_ferc: i64, ts_pir: i64) -> [u8; 125] {
+    let now = now_in_rfc3339();
+    let cts = if ts_cts > 0 { millis_in_rfc3339(ts_cts) } else { now.clone() };
+    let fer = if ts_fer > 0 { millis_in_rfc3339(ts_fer) } else { now.clone() };
+    let ferc = if ts_ferc > 0 { millis_in_rfc3339(ts_ferc) } else { now.clone() };
+    let pir = if ts_pir > 0 { millis_in_rfc3339(ts_pir) } else { now.clone() };
+
+    let mut ts_data: [u8; 125] = [0; 125];
+    ts_data[0..16].copy_from_slice(&UUID_TS);
+    ts_data[16] = 0x03;                                     // ts_reserved_zero_4bits & num_timestamps_minus1
+
+    ts_data[17] = TS_TYPE;
+    ts_data[18] = BPM_TS_EVENT_CTS;                         // Composition Time Event
+    ts_data[19..43].copy_from_slice(cts.as_bytes());
+    ts_data[43] = NULL;
+
+    ts_data[44] = TS_TYPE;
+    ts_data[45] = BPM_TS_EVENT_FER;                         // Frame Encode Request Event
+    ts_data[46..70].copy_from_slice(fer.as_bytes());
+    ts_data[70] = NULL;
+
+    ts_data[71] = TS_TYPE;
+    ts_data[72] = BPM_TS_EVENT_FERC;                        // Frame Encode Request Complete
+    ts_data[73..97].copy_from_slice(ferc.as_bytes());
+    ts_data[97] = NULL;
+
+    ts_data[98] = TS_TYPE;
+    ts_data[99] = BPM_TS_EVENT_PIR;                         // Packet Interleave Request Event
+    ts_data[100..124].copy_from_slice(pir.as_bytes());
+    ts_data[124] = NULL;
+
     return ts_data;
 }
 
-
 /// BPM TS pointer. Memory must be freed by the caller using bpm_destroy.
-///
-/// * `ts_data` - Pointer to the TS data.
-/// * `ts_size` - Size of the TS data.
-///
-/// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn bpm_ts_ptr(ts_data: *mut *mut u8, ts_size: *mut u32) -> i32 {
     if ts_data.is_null() || ts_size.is_null() {
         return -1;
     }
 
-    let ts = bpm_ts();
+    let ts = bpm_ts(0, 0, 0, 0);
     let size = ts.len();
     let box_ptr = Box::new(ts);
 
@@ -233,7 +219,6 @@ pub extern "C" fn bpm_ts_ptr(ts_data: *mut *mut u8, ts_size: *mut u32) -> i32 {
     return 0;
 }
 
-
 /// Free the memory allocated by bpm_ts_ptr, bpm_erm_ptr, or bpm_sm_ptr
 #[no_mangle]
 pub extern "C" fn bpm_destroy(data: *mut u8) {
@@ -243,7 +228,6 @@ pub extern "C" fn bpm_destroy(data: *mut u8) {
         }
     }
 }
-
 
 /// Print the state for debugging
 #[no_mangle]
@@ -259,18 +243,24 @@ pub extern "C" fn bpm_print_state() {
     print!("ERM Skipped: {:?}\n", state.erm_skipped);
     print!("ERM Output: {:?}\n", state.erm_output);
 
-    let data = bpm_ts();
+    let data = bpm_ts(0, 0, 0, 0);
     print!("Data: {:02X?}\n", data);
 }
 
-
+/// Current time in RFC 3339 format
 fn now_in_rfc3339() -> String {
-    let now = Utc::now();
-    let formatted_time = now.to_rfc3339_opts(SecondsFormat::Millis, true);
-    return formatted_time;
+    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
+/// Milliseconds in RFC 3339 format
+fn millis_in_rfc3339(timestamp_ms: i64) -> String {
+    let datetime: DateTime<Utc> = Utc.timestamp_millis_opt(timestamp_ms)
+        .single()
+        .expect("Invalid timestamp");
+    datetime.to_rfc3339_opts(SecondsFormat::Millis, true)
+}
 
+/// C string to a Rust string
 fn c_char_to_string(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         eprintln!("Error: Null pointer received");
@@ -286,15 +276,12 @@ fn c_char_to_string(ptr: *const c_char) -> Option<String> {
         .ok()
 }
 
-
+/// For quick tests
 fn main() {
     println!("Hello, world!");
     bpm_print_state();
 
     // Add some test data
-    bpm_frame_encoded("track1".to_string());
-    bpm_frame_encoded("track2".to_string());
-    bpm_frame_lagged("track1".to_string());
-    bpm_frame_lagged("track2".to_string());
+    bpm_frame_encoded(1);
     bpm_print_state();
 }

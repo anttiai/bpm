@@ -24,13 +24,16 @@ do {
         // Keyframe interval 120 frames
         bool is_keyframe = (i % 120 == 0);
 
+        int track0 = bpm_get_track_index("1920x1080");
+        int track1 = bpm_get_track_index("1280x720");
+
         // Track 0: Every frame encoded ("60fps")
-        bpm_frame_encoded_c("1920x1080");
+        bpm_frame_encoded(track0);
         //print_frame(0, i);
 
         // Track 1: Every other frame encoded ("30fps")
         if (i % 2 == 0) {
-            bpm_frame_encoded_c("1280x720");
+            bpm_frame_encoded(track1);
             //print_frame(1, i);
         }
     }
