@@ -123,7 +123,7 @@ pub extern "C" fn bpm_frame_encoded(track_idx: u32) {
         state.sm_rendered += 1;
     }
 
-    // All tracks: "Sum of all video encoder rendition sinks"
+    // Total frames output (sum of all video encoder rendition sinks)
     state.sm_output += 1;
     // Frames input to the encoder rendition
     state.erm_input[track_idx as usize] += 1;
@@ -217,10 +217,10 @@ pub fn bpm_sm(track_idx: u32) -> [u8; 65] {
     sm_data[60] = BPM_SM_FRAMES_OUTPUT;
     sm_data[61..65].copy_from_slice(&(state.sm_output - state.sm_output_ref[track_idx as usize]).to_be_bytes());
 
-    state.sm_rendered_ref[track_idx as usize] = state.sm_rendered - state.sm_rendered_ref[track_idx as usize];
-    state.sm_lagged_ref[track_idx as usize] = state.sm_lagged - state.sm_lagged_ref[track_idx as usize];
-    state.sm_dropped_ref[track_idx as usize] = state.sm_dropped - state.sm_dropped_ref[track_idx as usize];
-    state.sm_output_ref[track_idx as usize] = state.sm_output - state.sm_output_ref[track_idx as usize];
+    state.sm_rendered_ref[track_idx as usize] = state.sm_rendered;
+    state.sm_lagged_ref[track_idx as usize] = state.sm_lagged;
+    state.sm_dropped_ref[track_idx as usize] = state.sm_dropped;
+    state.sm_output_ref[track_idx as usize] = state.sm_output;
 
     return sm_data;
 }
@@ -248,9 +248,9 @@ pub fn bpm_erm(track_idx: u32) -> [u8; 60] {
     erm_data[55] = BPM_ERM_FRAMES_OUTPUT;
     erm_data[56..60].copy_from_slice(&(state.erm_output[track_idx as usize] - state.erm_output_ref[track_idx as usize]).to_be_bytes());
 
-    state.erm_input_ref[track_idx as usize] = state.erm_input[track_idx as usize] - state.erm_input_ref[track_idx as usize];
-    state.erm_skipped_ref[track_idx as usize] = state.erm_skipped[track_idx as usize] - state.erm_skipped_ref[track_idx as usize];
-    state.erm_output_ref[track_idx as usize] = state.erm_output[track_idx as usize] - state.erm_output_ref[track_idx as usize];
+    state.erm_input_ref[track_idx as usize] = state.erm_input[track_idx as usize];
+    state.erm_skipped_ref[track_idx as usize] = state.erm_skipped[track_idx as usize];
+    state.erm_output_ref[track_idx as usize] = state.erm_output[track_idx as usize];
 
     return erm_data;
 }
