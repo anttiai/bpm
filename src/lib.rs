@@ -209,13 +209,13 @@ pub fn bpm_sm(track_idx: u32) -> [u8; 65] {
     sm_data[44] = 0x03;                                     // ts_reserved_zero_4bits & num_counters_minus1
 
     sm_data[45] = BPM_SM_FRAMES_RENDERED;
-    sm_data[46..50].copy_from_slice(&state.sm_rendered_ref[track_idx as usize].to_be_bytes());
+    sm_data[46..50].copy_from_slice(&(state.sm_rendered - state.sm_rendered_ref[track_idx as usize]).to_be_bytes());
     sm_data[50] = BPM_SM_FRAMES_LAGGED;
-    sm_data[51..55].copy_from_slice(&state.sm_lagged_ref[track_idx as usize].to_be_bytes());
+    sm_data[51..55].copy_from_slice(&(state.sm_lagged - state.sm_lagged_ref[track_idx as usize]).to_be_bytes());
     sm_data[55] = BPM_SM_FRAMES_DROPPED;
-    sm_data[56..60].copy_from_slice(&state.sm_dropped_ref[track_idx as usize].to_be_bytes());
+    sm_data[56..60].copy_from_slice(&(state.sm_dropped - state.sm_dropped_ref[track_idx as usize]).to_be_bytes());
     sm_data[60] = BPM_SM_FRAMES_OUTPUT;
-    sm_data[61..65].copy_from_slice(&state.sm_output_ref[track_idx as usize].to_be_bytes());
+    sm_data[61..65].copy_from_slice(&(state.sm_output - state.sm_output_ref[track_idx as usize]).to_be_bytes());
 
     state.sm_rendered_ref[track_idx as usize] = state.sm_rendered - state.sm_rendered_ref[track_idx as usize];
     state.sm_lagged_ref[track_idx as usize] = state.sm_lagged - state.sm_lagged_ref[track_idx as usize];
@@ -242,11 +242,11 @@ pub fn bpm_erm(track_idx: u32) -> [u8; 60] {
     erm_data[44] = 0x02;                                     // ts_reserved_zero_4bits & num_counters_minus1
 
     erm_data[45] = BPM_ERM_FRAMES_INPUT;
-    erm_data[46..50].copy_from_slice(&state.erm_input_ref[track_idx as usize].to_be_bytes());
+    erm_data[46..50].copy_from_slice(&(state.erm_input[track_idx as usize] - state.erm_input_ref[track_idx as usize]).to_be_bytes());
     erm_data[50] = BPM_ERM_FRAMES_SKIPPED;
-    erm_data[51..55].copy_from_slice(&state.erm_skipped_ref[track_idx as usize].to_be_bytes());
+    erm_data[51..55].copy_from_slice(&(state.erm_skipped[track_idx as usize] - state.erm_skipped_ref[track_idx as usize]).to_be_bytes());
     erm_data[55] = BPM_ERM_FRAMES_OUTPUT;
-    erm_data[56..60].copy_from_slice(&state.erm_output_ref[track_idx as usize].to_be_bytes());
+    erm_data[56..60].copy_from_slice(&(state.erm_output[track_idx as usize] - state.erm_output_ref[track_idx as usize]).to_be_bytes());
 
     state.erm_input_ref[track_idx as usize] = state.erm_input[track_idx as usize] - state.erm_input_ref[track_idx as usize];
     state.erm_skipped_ref[track_idx as usize] = state.erm_skipped[track_idx as usize] - state.erm_skipped_ref[track_idx as usize];
