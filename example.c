@@ -10,7 +10,7 @@ void render_and_print_data(int track_idx) {
     // Pointers to the Rust-allocated memory
     uint8_t* ts_data = NULL;
     uint32_t ts_size = 0;
-    bpm_render_ts_ptr(&ts_data, &ts_size);
+    bpm_render_ts_ptr(0, 0, 0, 0, &ts_data, &ts_size);
     printf("TS: ");
     for (int i=0; i<ts_size; i++) {
         printf("0x%02X ", ts_data[i]);

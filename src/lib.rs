@@ -1,5 +1,5 @@
 use parking_lot::{Mutex};
-use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
+use chrono::{DateTime, SecondsFormat, TimeDelta, TimeZone, Utc};
 use core::panic;
 use std::{ffi::CStr, os::raw::c_char, u32};
 
@@ -158,12 +158,12 @@ pub extern "C" fn bpm_frame_dropped(track_idx: u32) {
 }
 
 /// BPM Timestamp
-pub fn bpm_ts(ts_cts: i64, ts_fer: i64, ts_ferc: i64, ts_pir: i64) -> [u8; 125] {
-    let now = now_in_rfc3339();
-    let cts = if ts_cts > 0 { millis_in_rfc3339(ts_cts) } else { now.clone() };
-    let fer = if ts_fer > 0 { millis_in_rfc3339(ts_fer) } else { now.clone() };
-    let ferc = if ts_ferc > 0 { millis_in_rfc3339(ts_ferc) } else { now.clone() };
-    let pir = if ts_pir > 0 { millis_in_rfc3339(ts_pir) } else { now.clone() };
+pub fn bpm_ts(ts_cts: u32, ts_fer: u32, ts_ferc: u32, ts_pir: u32) -> [u8; 125] {
+    // PIR > FERC > FER > CTS
+    let cts = if ts_cts > 0 { millis_in_rfc3339(ts_cts as i64) } else { now_in_rfc3339(-3).clone() };
+    let fer = if ts_fer > 0 { millis_in_rfc3339(ts_fer as i64) } else { now_in_rfc3339(-2).clone() };
+    let ferc = if ts_ferc > 0 { millis_in_rfc3339(ts_ferc as i64) } else { now_in_rfc3339(-1).clone() };
+    let pir = if ts_pir > 0 { millis_in_rfc3339(ts_pir as i64) } else { now_in_rfc3339(0).clone() };
 
     let mut ts_data: [u8; 125] = [0; 125];
     ts_data[0..16].copy_from_slice(&UUID_TS);
@@ -195,7 +195,7 @@ pub fn bpm_ts(ts_cts: i64, ts_fer: i64, ts_ferc: i64, ts_pir: i64) -> [u8; 125] 
 /// BPM Session Metrics
 pub fn bpm_sm(track_idx: u32) -> [u8; 65] {
     let mut state = STATE.lock();
-    let now = now_in_rfc3339();
+    let now = now_in_rfc3339(0);
 
     let mut sm_data: [u8; 65] = [0; 65];
     sm_data[0..16].copy_from_slice(&UUID_SM);
@@ -228,7 +228,7 @@ pub fn bpm_sm(track_idx: u32) -> [u8; 65] {
 /// BPM Encoded Rendition Metrics
 pub fn bpm_erm(track_idx: u32) -> [u8; 60] {
     let mut state = STATE.lock();
-    let now = now_in_rfc3339();
+    let now = now_in_rfc3339(0);
 
     let mut erm_data: [u8; 60] = [0; 60];
     erm_data[0..16].copy_from_slice(&UUID_ERM);
@@ -256,14 +256,19 @@ pub fn bpm_erm(track_idx: u32) -> [u8; 60] {
 }
 
 /// Render BPM TS data.
+///
+/// Timestamps in UTC millis: cts=Composition Time, fer=Frame Encode Request,
+/// ferc=Frame Encode Request Complete, pir=Packet Interleave Request. If 0, use current time.
+///
 /// Memory must be freed by the caller using bpm_destroy.
 #[no_mangle]
-pub extern "C" fn bpm_render_ts_ptr(ts_data: *mut *mut u8, ts_size: *mut u32) -> i32 {
+pub extern "C" fn bpm_render_ts_ptr(ts_cts: u32, ts_fer: u32, ts_ferc: u32, ts_pir: u32,
+                                    ts_data: *mut *mut u8, ts_size: *mut u32) -> i32 {
     if ts_data.is_null() || ts_size.is_null() {
         return -1;
     }
 
-    let ts = bpm_ts(0, 0, 0, 0);
+    let ts = bpm_ts(ts_cts, ts_fer, ts_ferc, ts_pir);
     let box_ptr = Box::new(ts);
     unsafe {
         *ts_data = Box::into_raw(box_ptr) as *mut u8;
@@ -326,7 +331,7 @@ pub extern "C" fn bpm_destroy(data: *mut u8) {
 #[no_mangle]
 pub extern "C" fn bpm_print_state() {
     let state = STATE.lock();
-    print!("Time: {}\n", now_in_rfc3339());
+    print!("Time: {}\n", now_in_rfc3339(0));
     print!("Track_map: {:?}\n", state.track_map);
     print!("SM Rendered: {}, {:?}\n", state.sm_rendered, state.sm_rendered_ref);
     print!("SM Lagged: {}, {:?}\n", state.sm_lagged, state.sm_lagged_ref);
@@ -337,9 +342,12 @@ pub extern "C" fn bpm_print_state() {
     print!("ERM Output: {:?}, {:?}\n", state.erm_output, state.erm_output_ref);
 }
 
-/// Current time in RFC 3339 format
-fn now_in_rfc3339() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+/// Current time in RFC 3339 format with possible offset in milliseconds
+fn now_in_rfc3339(offset_ms: i32) -> String {
+    Utc::now()
+        .checked_add_signed(TimeDelta::milliseconds(offset_ms as i64))
+        .expect("Error adding offset")
+        .to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
 /// Milliseconds in RFC 3339 format
