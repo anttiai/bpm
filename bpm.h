@@ -15,7 +15,7 @@ uint8_t bpm_render_ts_ptr(int ts_cts, int ts_fer, int ts_ferc, int ts_pir, uint8
 uint8_t bpm_render_sm_ptr(int track_idx, uint8_t** ts_data, uint32_t* ts_size);
 uint8_t bpm_render_erm_ptr(int track_idx, uint8_t** ts_data, uint32_t* ts_size);
 void bpm_destroy(uint8_t* data);
-void bpm_print_state();
+void bpm_print_state(void);
 
 #ifdef __cplusplus
 }
